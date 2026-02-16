@@ -1,0 +1,7 @@
+[theme]
+base = "light"
+primaryColor = "#b02cd4"        # Tu morado/magenta para acentos
+backgroundColor = "#FFFFFF"     # Fondo blanco puro
+secondaryBackgroundColor = "#F0F2F6" # Fondo de la barra lateral (gris muy suave)
+textColor = "#31333F"           # Texto gris oscuro (casi negro) para lectura perfecta
+font = "sans serif"
