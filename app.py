@@ -94,6 +94,7 @@ if 'user_role' not in st.session_state: st.session_state['user_role'] = None
 if 'user_info' not in st.session_state: st.session_state['user_info'] = {}
 if 'access_token' not in st.session_state: st.session_state['access_token'] = None
 if 'refresh_token' not in st.session_state: st.session_state['refresh_token'] = None
+if 'current_view' not in st.session_state: st.session_state['current_view'] = 'dashboard'
 
 if st.session_state['access_token']:
     try:
@@ -124,6 +125,41 @@ def login_user(email, password):
     except Exception as e:
         st.error("Credenciales incorrectas.")
         print(f"DEBUG: {e}")
+
+def create_new_user(email, password, full_name, role, assigned_districts):
+    try:
+        # Usar un cliente temporal para no cerrar la sesión del admin actual al crear otro usuario
+        url = st.secrets["supabase"]["url"]
+        key = st.secrets["supabase"]["key"]
+        temp_client = create_client(url, key)
+        
+        # Crear usuario en Auth
+        auth_response = temp_client.auth.sign_up({
+            "email": email,
+            "password": password,
+            "options": {
+                "data": {
+                    "full_name": full_name
+                }
+            }
+        })
+        
+        if auth_response.user:
+            user_id = auth_response.user.id
+            # Insertar perfil en la tabla pública usando el cliente principal (admin)
+            supabase.table('user_profiles').insert({
+                'id': user_id,
+                'email': email,
+                'full_name': full_name,
+                'role': role,
+                'assigned_districts': assigned_districts # Array de UUIDs
+            }).execute()
+            return True, "Usuario creado exitosamente"
+        else:
+            return False, "No se pudo crear el usuario (Error de Autenticación)"
+            
+    except Exception as e:
+        return False, f"Error al crear usuario: {str(e)}"
 
 def create_distrito(nombre, direccion, comuna, region, lat, lon, isocronas, foto, poly_5, poly_10, poly_15, poly_20):
     try:
@@ -205,6 +241,7 @@ def logout_user():
     st.session_state['user_info'] = {}
     st.session_state['access_token'] = None
     st.session_state['refresh_token'] = None
+    st.session_state['current_view'] = 'dashboard'
     st.rerun()
 
 # --- 5. VISTAS ---
@@ -228,6 +265,44 @@ def view_login():
                 login_user(email, password)
         st.markdown('</div>', unsafe_allow_html=True)
 
+def view_admin_users():
+    with st.sidebar:
+        try: st.image("assets/Pin Do Logo.jpg", width=70)
+        except: st.write("📍")
+        if st.button("← Volver al Dashboard"):
+            st.session_state['current_view'] = 'dashboard'
+            st.rerun()
+        st.divider()
+        if st.button("Cerrar Sesión"): logout_user()
+
+    st.title("Administración de Usuarios")
+    st.markdown("Crea nuevos usuarios y asígnales distritos específicos.")
+    st.divider()
+    
+    # Obtener lista de distritos para el multiselect
+    distritos_resp = supabase.table('distritos').select("id, nombre").execute()
+    distritos_map = {d['nombre']: d['id'] for d in distritos_resp.data}
+    
+    with st.form("create_user_form"):
+        st.subheader("Nuevo Usuario")
+        c1, c2 = st.columns(2)
+        new_email = c1.text_input("Correo Electrónico")
+        new_pass = c2.text_input("Contraseña", type="password")
+        new_name = st.text_input("Nombre Completo")
+        
+        c3, c4 = st.columns(2)
+        new_role = c3.selectbox("Rol", ["franchisee_admin", "franchisee_editor", "franchisee_viewer"])
+        selected_districts = c4.multiselect("Asignar Distritos", list(distritos_map.keys()))
+        
+        if st.form_submit_button("Crear Usuario"):
+            if not new_email or not new_pass or not new_name:
+                st.error("Todos los campos son obligatorios.")
+            else:
+                district_ids = [distritos_map[name] for name in selected_districts]
+                success, msg = create_new_user(new_email, new_pass, new_name, new_role, district_ids)
+                if success: st.success(msg)
+                else: st.error(msg)
+
 def view_dashboard():
     with st.sidebar:
         try: st.image("assets/Pin Do Logo.jpg", width=70)
@@ -240,27 +315,42 @@ def view_dashboard():
                     'franchisee_editor': '✏️ Editor', 'franchisee_viewer': '👀 Visita'}
         label = role_map.get(st.session_state['user_role'], 'Usuario')
         st.markdown(f"<div class='role-badge'>{label}</div>", unsafe_allow_html=True)
+        
+        # Botón para Super Admin
+        if st.session_state['user_role'] == 'super_admin':
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("👥 Administrar Usuarios"):
+                st.session_state['current_view'] = 'admin_users'
+                st.rerun()
+
         st.divider()
         if st.button("Cerrar Sesión"): logout_user()
 
     st.title("Bienvenido a Distrito 0")
     st.divider()
     role = st.session_state['user_role']
-
+    # Obtener todos los distritos
+    response = supabase.table('distritos').select("*").execute()
+    all_distritos = response.data
+    
+    # Filtrar distritos según el rol y asignación
     if role == 'super_admin':
-        st.subheader("Panel de Administración de Distritos")
-        response = supabase.table('distritos').select("*").execute()
-        distritos_data = response.data
+        distritos_data = all_istricts', [])
+        if assigned_ids: = [d for d in all_distritos if d['id'] in assigned_ids]
+        else:
+            distritos_data = []
 
-        tab1, tab2, tab3 = st.tabs(["🗺️ Visualizar", "➕ Crear", "✏️ Editar"])
+    # Definir pestañas disponibles según permisos
+    tabs = ["🗺️ Visualizar"]
+    if role == 'super_admin': tabs.append("➕ Crear")
+    if role in ['super_admin', 'franchisee_admin', 'franchisee_editor']: tabs.append("✏️ Editar")
+current_tabs = st.tabs(tabs)
 
-        # --- VISUALIZAR (MAPA) ---
-        with tab1:
+    # --- VISUALIZAR (MAPA) ---
+    with current_tabs[0]:
             st.header("Mapa de Distritos")
-            if not distritos_data:
-                st.info("No hay distritos.")
-                m = folium.Map(location=[-33.4372, -70.6342], zoom_start=11)
-                st_folium(m, width='100%', height=500)
+            if not distritos_da(tion=[-33.4372, -70.6342], zoom_start=11)
+_folium(m, width='100%', height=500)
             else:
                 df = pd.DataFrame(distritos_data)
                 try: 
@@ -309,15 +399,14 @@ def view_dashboard():
                 st_folium(m, width='100%', height=600, returned_objects=[])
                 st.dataframe(df[['nombre', 'comuna', 'region']], use_container_width=True, hide_index=True)
 
-        # --- CREAR ---
-        with tab2:
+    # --- CREAR (Solo Super Admin) ---
+    if role == 'super_admin':
+        with current_tabs[1]:
             st.header("Crear Distrito")
             with st.form("crear"):
                 nombre = st.text_input("Nombre")
                 direccion = st.text_input("Dirección")
-                c1, c2 = st.columns(2)
-                comuna = c1.text_input("Comuna")
-                lat = c1.number_input("Latitud", format="%.6f")
+            c1, lat = c1.number_input("Latitud", format="%.6f")
                 region = c2.text_input("Región")
                 lon = c2.number_input("Longitud", format="%.6f")
                 
@@ -336,16 +425,16 @@ def view_dashboard():
                     if create_distrito(nombre, direccion, comuna, region, lat, lon, isos, foto, p5, p10, p15, p20):
                         st.success("Creado!"); time.sleep(1); st.rerun()
 
-        # --- EDITAR ---
-        with tab3:
+    # --- EDITAR (Super Admin y Editores) ---
+    if role in ['super_admin', 'franchisee_admin', 'franchisee_editor']:
+        edit_tab_index = 2 if role == 'super_admin' else 1
+        with current_tabs[edit_tab_index]:
             st.header("Editar")
             if not distritos_data: st.info("Nada para editar")
             else:
                 d_map = {d['nombre']: d for d in distritos_data}
                 sel = st.selectbox("Elegir Distrito", list(d_map.keys()))
-                if sel:
-                    d = d_map[sel]
-                    with st.form("editar"):
+            if s    with st.form("editar"):
                         enom = st.text_input("Nombre", d['nombre'])
                         edir = st.text_input("Dirección", d['direccion'])
                         k1, k2 = st.columns(2)
@@ -374,9 +463,9 @@ def view_dashboard():
                     if st.button("Eliminar Distrito", type="primary"):
                         if delete_distrito(d['id']): st.success("Eliminado"); time.sleep(1); st.rerun()
 
-    elif role in ['franchisee_admin', 'franchisee_editor', 'franchisee_viewer']:
-        st.subheader("Gestión de Franquicia")
-        st.info(f"Vista para rol: {role}")
-
-if st.session_state['logged_in']: view_dashboard()
+if st.session_state['logged_in']: 
+    if st.session_state.get('current_view') == 'admin_users':
+        view_admin_users()
+    else:
+        view_dashboard()
 else: view_login()

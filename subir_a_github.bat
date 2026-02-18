@@ -32,6 +32,11 @@ exit
 :GIT_EXISTE
 
 echo ---------------------------------------------------
+echo  [0/3] Descargando cambios remotos (si existen)...
+echo ---------------------------------------------------
+git pull origin main
+echo.
+echo ---------------------------------------------------
 echo  ESTADO ACTUAL DEL REPOSITORIO
 echo ---------------------------------------------------
 git status
