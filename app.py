@@ -146,8 +146,12 @@ def create_new_user(email, password, full_name, role, assigned_districts):
         
         if auth_response.user:
             user_id = auth_response.user.id
-            # Insertar perfil en la tabla pública usando el cliente principal (admin)
-            supabase.table('user_profiles').insert({
+            
+            # Usar el cliente temporal (usuario nuevo) si hay sesión, para cumplir con RLS estándar (usuario crea su propio perfil)
+            # Si no hay sesión (requiere confirmación email), usamos el cliente admin (supabase)
+            client_to_use = temp_client if auth_response.session else supabase
+            
+            client_to_use.table('user_profiles').insert({
                 'id': user_id,
                 'email': email,
                 'full_name': full_name,
