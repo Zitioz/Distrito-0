@@ -7,6 +7,9 @@ import folium
 import uuid # Para generar nombres de archivo únicos
 import requests
 
+# Importar módulos personalizados
+from modules import properties
+
 # --- 1. CONFIGURACIÓN Y ESTILOS ---
 st.set_page_config(
     page_title="Distrito 0 | Plataforma",
@@ -151,19 +154,34 @@ def create_new_user(email, password, full_name, role, assigned_districts):
             # Si no hay sesión (requiere confirmación email), usamos el cliente admin (supabase)
             client_to_use = temp_client if auth_response.session else supabase
             
-            client_to_use.table('user_profiles').insert({
+            user_data = {
                 'id': user_id,
                 'email': email,
                 'full_name': full_name,
                 'role': role,
-                'assigned_districts': assigned_districts # Array de UUIDs
-            }).execute()
+                'assigned_districts': assigned_districts
+            }
+            
+            client_to_use.table('user_profiles').insert(user_data).execute()
             return True, "Usuario creado exitosamente"
         else:
             return False, "No se pudo crear el usuario (Error de Autenticación)"
             
     except Exception as e:
         return False, f"Error al crear usuario: {str(e)}"
+
+def update_user(user_id, email, full_name, role, assigned_districts):
+    try:
+        data = {
+            'email': email,
+            'full_name': full_name,
+            'role': role,
+            'assigned_districts': assigned_districts
+        }
+        supabase.table('user_profiles').update(data).eq('id', user_id).execute()
+        return True, "Usuario actualizado exitosamente"
+    except Exception as e:
+        return False, f"Error al actualizar usuario: {str(e)}"
 
 def create_distrito(nombre, direccion, comuna, region, lat, lon, isocronas, foto, poly_5, poly_10, poly_15, poly_20):
     try:
@@ -270,6 +288,10 @@ def view_login():
         st.markdown('</div>', unsafe_allow_html=True)
 
 def view_admin_users():
+    if st.session_state.get('user_role') != 'super_admin':
+        st.error("Acceso no autorizado.")
+        return
+
     with st.sidebar:
         try: st.image("assets/Pin Do Logo.jpg", width=70)
         except: st.write("📍")
@@ -280,32 +302,76 @@ def view_admin_users():
         if st.button("Cerrar Sesión"): logout_user()
 
     st.title("Administración de Usuarios")
-    st.markdown("Crea nuevos usuarios y asígnales distritos específicos.")
-    st.divider()
     
     # Obtener lista de distritos para el multiselect
     distritos_resp = supabase.table('distritos').select("id, nombre").execute()
     distritos_map = {d['nombre']: d['id'] for d in distritos_resp.data}
+    id_to_name = {v: k for k, v in distritos_map.items()}
     
-    with st.form("create_user_form"):
-        st.subheader("Nuevo Usuario")
-        c1, c2 = st.columns(2)
-        new_email = c1.text_input("Correo Electrónico")
-        new_pass = c2.text_input("Contraseña", type="password")
-        new_name = st.text_input("Nombre Completo")
+    tab_create, tab_edit = st.tabs(["➕ Crear Usuario", "✏️ Editar Usuarios"])
+    
+    with tab_create:
+        st.markdown("Crea nuevos usuarios y asígnales distritos específicos.")
+        with st.form("create_user_form"):
+            c1, c2 = st.columns(2)
+            new_email = c1.text_input("Correo Electrónico")
+            new_pass = c2.text_input("Contraseña", type="password")
+            new_name = st.text_input("Nombre Completo")
+            
+            c3, c4 = st.columns(2)
+            new_role = c3.selectbox("Rol", ["franchisee_admin", "franchisee_editor", "franchisee_viewer", "super_admin"])
+            selected_districts = c4.multiselect("Asignar Distritos", list(distritos_map.keys()))
+            
+            if st.form_submit_button("Crear Usuario"):
+                if not new_email or not new_pass or not new_name:
+                    st.error("Todos los campos son obligatorios.")
+                else:
+                    district_ids = [distritos_map[name] for name in selected_districts]
+                    success, msg = create_new_user(new_email, new_pass, new_name, new_role, district_ids)
+                    if success: st.success(msg)
+                    else: st.error(msg)
+
+    with tab_edit:
+        st.markdown("Edita la información y permisos de usuarios existentes.")
+        # Obtener usuarios
+        users_resp = supabase.table('user_profiles').select("*").order('created_at', desc=True).execute()
+        users = users_resp.data
         
-        c3, c4 = st.columns(2)
-        new_role = c3.selectbox("Rol", ["franchisee_admin", "franchisee_editor", "franchisee_viewer"])
-        selected_districts = c4.multiselect("Asignar Distritos", list(distritos_map.keys()))
-        
-        if st.form_submit_button("Crear Usuario"):
-            if not new_email or not new_pass or not new_name:
-                st.error("Todos los campos son obligatorios.")
-            else:
-                district_ids = [distritos_map[name] for name in selected_districts]
-                success, msg = create_new_user(new_email, new_pass, new_name, new_role, district_ids)
-                if success: st.success(msg)
-                else: st.error(msg)
+        if not users:
+            st.info("No hay usuarios registrados.")
+        else:
+            user_options = {f"{u['full_name']} ({u['email']})": u['id'] for u in users}
+            sel_user_label = st.selectbox("Seleccionar Usuario", [""] + list(user_options.keys()))
+            
+            if sel_user_label:
+                uid = user_options[sel_user_label]
+                u_data = next((u for u in users if u['id'] == uid), None)
+                
+                if u_data:
+                    with st.form("edit_user_form"):
+                        ec1, ec2 = st.columns(2)
+                        # Nota: Editar el email aquí solo actualiza el perfil, no el login de Supabase Auth (requiere service role)
+                        e_email = ec1.text_input("Correo (Perfil)", value=u_data.get('email', ''))
+                        e_name = ec2.text_input("Nombre Completo", value=u_data.get('full_name', ''))
+                        
+                        ec3, ec4 = st.columns(2)
+                        roles = ["franchisee_admin", "franchisee_editor", "franchisee_viewer", "super_admin"]
+                        curr_role = u_data.get('role')
+                        e_role = ec3.selectbox("Rol", roles, index=roles.index(curr_role) if curr_role in roles else 0)
+                        
+                        # Pre-seleccionar distritos actuales
+                        curr_dist_ids = u_data.get('assigned_districts') or []
+                        default_dists = [id_to_name[did] for did in curr_dist_ids if did in id_to_name]
+                        e_dists = ec4.multiselect("Distritos Asignados", list(distritos_map.keys()), default=default_dists)
+                        
+                        if st.form_submit_button("Actualizar Datos"):
+                            new_d_ids = [distritos_map[name] for name in e_dists]
+                            ok, msg = update_user(uid, e_email, e_name, e_role, new_d_ids)
+                            if ok: 
+                                st.success(msg)
+                                time.sleep(1)
+                                st.rerun()
+                            else: st.error(msg)
 
 def view_dashboard():
     with st.sidebar:
@@ -326,6 +392,11 @@ def view_dashboard():
             if st.button("👥 Administrar Usuarios"):
                 st.session_state['current_view'] = 'admin_users'
                 st.rerun()
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("🏠 Propiedades"):
+            st.session_state['current_view'] = 'properties'
+            st.rerun()
 
         st.divider()
         if st.button("Cerrar Sesión"): logout_user()
@@ -478,6 +549,8 @@ def view_dashboard():
 if st.session_state['logged_in']: 
     if st.session_state.get('current_view') == 'admin_users':
         view_admin_users()
+    elif st.session_state.get('current_view') == 'properties':
+        properties.render_properties_view(supabase)
     else:
         view_dashboard()
 else: view_login()
