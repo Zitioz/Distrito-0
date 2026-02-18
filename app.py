@@ -468,8 +468,8 @@ def view_dashboard():
                             if update_distrito(d['id'], enom, edir, ecom, ereg, elat, elon, eiso, efoto, ep5, ep10, ep15, ep20, d['foto_url'], curr_p):
                                 st.success("Actualizado!"); time.sleep(1); st.rerun()
                     
-                    if st.button("Eliminar Distrito", type="primary"):
-                        if delete_distrito(d['id']): st.success("Eliminado"); time.sleep(1); st.rerun()
+                if st.button("Eliminar Distrito", type="primary"):
+                    if delete_distrito(d['id']): st.success("Eliminado"); time.sleep(1); st.rerun()
 
 if st.session_state['logged_in']: 
     if st.session_state.get('current_view') == 'admin_users':
