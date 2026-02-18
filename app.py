@@ -335,8 +335,11 @@ def view_dashboard():
     
     # Filtrar distritos según el rol y asignación
     if role == 'super_admin':
-        distritos_data = all_istricts', [])
-        if assigned_ids: = [d for d in all_distritos if d['id'] in assigned_ids]
+        distritos_data = all_distritos
+    else:
+        assigned_ids = st.session_state['user_info'].get('assigned_districts', [])
+        if assigned_ids:
+            distritos_data = [d for d in all_distritos if d['id'] in assigned_ids]
         else:
             distritos_data = []
 
@@ -344,13 +347,15 @@ def view_dashboard():
     tabs = ["🗺️ Visualizar"]
     if role == 'super_admin': tabs.append("➕ Crear")
     if role in ['super_admin', 'franchisee_admin', 'franchisee_editor']: tabs.append("✏️ Editar")
-current_tabs = st.tabs(tabs)
+    current_tabs = st.tabs(tabs)
 
     # --- VISUALIZAR (MAPA) ---
     with current_tabs[0]:
             st.header("Mapa de Distritos")
-            if not distritos_da(tion=[-33.4372, -70.6342], zoom_start=11)
-_folium(m, width='100%', height=500)
+            if not distritos_data:
+                st.info("No hay distritos.")
+                m = folium.Map(location=[-33.4372, -70.6342], zoom_start=11)
+                st_folium(m, width='100%', height=500)
             else:
                 df = pd.DataFrame(distritos_data)
                 try: 
@@ -406,8 +411,10 @@ _folium(m, width='100%', height=500)
             with st.form("crear"):
                 nombre = st.text_input("Nombre")
                 direccion = st.text_input("Dirección")
-            c1, lat = c1.number_input("Latitud", format="%.6f")
+                c1, c2 = st.columns(2)
+                comuna = c1.text_input("Comuna")
                 region = c2.text_input("Región")
+                lat = c1.number_input("Latitud", format="%.6f")
                 lon = c2.number_input("Longitud", format="%.6f")
                 
                 opts = ["5 min", "10 min", "15 min", "20 min", "25 min", "30 min"]
@@ -434,7 +441,8 @@ _folium(m, width='100%', height=500)
             else:
                 d_map = {d['nombre']: d for d in distritos_data}
                 sel = st.selectbox("Elegir Distrito", list(d_map.keys()))
-            if s    with st.form("editar"):
+                d = d_map[sel]
+                with st.form("editar"):
                         enom = st.text_input("Nombre", d['nombre'])
                         edir = st.text_input("Dirección", d['direccion'])
                         k1, k2 = st.columns(2)

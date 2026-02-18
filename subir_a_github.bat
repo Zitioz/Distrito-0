@@ -36,24 +36,12 @@ echo  [0/3] Descargando cambios remotos (si existen)...
 echo ---------------------------------------------------
 git pull origin main
 echo.
-echo ---------------------------------------------------
-echo  ESTADO ACTUAL DEL REPOSITORIO
-echo ---------------------------------------------------
-git status
-echo.
-echo ---------------------------------------------------
 
-set /p confirm="Quieres subir estos cambios? (S/N): "
-if /i "%confirm%" neq "S" goto :EOF
-
-echo.
 echo [1/3] Agregando archivos...
 git add .
 
-set /p msg="[2/3] Mensaje del commit (Enter para 'Actualizacion rapida'): "
-if "%msg%"=="" set msg=Actualizacion rapida
-
-git commit -m "%msg%"
+echo [2/3] Guardando cambios...
+git commit -m "Actualizacion automatica %date% %time%"
 
 echo.
 echo [3/3] Subiendo a GitHub...
@@ -65,4 +53,4 @@ if %errorlevel% equ 0 (
 ) else (
     echo [ERROR] Hubo un problema al subir los cambios.
 )
-pause
+timeout /t 5
