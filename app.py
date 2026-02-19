@@ -455,8 +455,8 @@ def view_dashboard():
                     clat, clon = -33.4372, -70.6342
                 
                 m = folium.Map(location=[clat, clon], zoom_start=12, tiles=None)
-                folium.TileLayer(tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', attr='Google', name='Híbrido').add_to(m)
                 folium.TileLayer(tiles='OpenStreetMap', name='Calles').add_to(m)
+                folium.TileLayer(tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', attr='Google', name='Híbrido').add_to(m)
 
                 for _, row in df.iterrows():
                     # Marcador Principal (El pin morado)
