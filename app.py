@@ -418,6 +418,22 @@ def view_dashboard():
         else:
             distritos_data = []
 
+    # Obtener propiedades asociadas a los distritos visibles para mostrarlas en el mapa
+    props_data = []
+    if distritos_data:
+        visible_ids = [d['id'] for d in distritos_data]
+        try:
+            # Consultar propiedades con datos básicos y satélites para el popup
+            q_props = """
+                id, lat, lon, direccion, distrito_id,
+                propiedades_backoffice(tipo_propiedad),
+                propiedades_portal(precio_publicacion)
+            """
+            response_props = supabase.table('propiedades').select(q_props).in_('distrito_id', visible_ids).execute()
+            props_data = response_props.data
+        except Exception as e:
+            print(f"Error cargando propiedades en mapa: {e}")
+
     # Definir pestañas disponibles según permisos
     tabs = ["🗺️ Visualizar"]
     if role == 'super_admin': tabs.append("➕ Crear")
@@ -474,6 +490,37 @@ def view_dashboard():
                                         style_function=lambda x, c=colors[mins]: {'fillColor': c, 'color': c, 'weight': 1, 'fillOpacity': 0.3}
                                     ).add_to(m)
                             except: pass
+                
+                # --- NUEVO: Marcadores de Propiedades ---
+                for p in props_data:
+                    if p.get('lat') and p.get('lon'):
+                        # Preparar datos para el popup
+                        tipo = "Propiedad"
+                        precio_str = ""
+                        
+                        # Extraer tipo de propiedad (Backoffice)
+                        if p.get('propiedades_backoffice'):
+                            bo = p['propiedades_backoffice']
+                            # Manejo robusto por si Supabase devuelve lista o dict
+                            if isinstance(bo, list) and bo: bo = bo[0]
+                            if isinstance(bo, dict): tipo = bo.get('tipo_propiedad') or "Propiedad"
+                            
+                        # Extraer precio (Portal)
+                        if p.get('propiedades_portal'):
+                            portal = p['propiedades_portal']
+                            if isinstance(portal, list) and portal: portal = portal[0]
+                            if isinstance(portal, dict):
+                                val = portal.get('precio_publicacion')
+                                if val: precio_str = f"<br>UF {val:,.0f}"
+                        
+                        html_prop = f"<b>{tipo}</b><br>{p.get('direccion', 'Sin dirección')}{precio_str}"
+                        
+                        folium.Marker(
+                            [p['lat'], p['lon']],
+                            popup=html_prop,
+                            tooltip=tipo,
+                            icon=folium.Icon(color='blue', icon='home')
+                        ).add_to(m)
                 
                 folium.LayerControl().add_to(m)
                 st_folium(m, width='100%', height=600, returned_objects=[])

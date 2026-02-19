@@ -88,6 +88,15 @@ def create_property(supabase, data):
         return False
 
 def render_properties_view(supabase):
+    with st.sidebar:
+        try: st.image("assets/Pin Do Logo.jpg", width=70)
+        except: st.write("📍")
+        
+        if st.button("← Volver al Dashboard"):
+            st.session_state['current_view'] = 'dashboard'
+            st.rerun()
+        st.divider()
+
     st.title("Gestión de Propiedades")
 
     # Obtener distritos para el selector
